@@ -40,13 +40,14 @@
   body.draw #wrap { display:block; }
 
   /* ── панель инструментов ── */
+  #palette { max-width:min(560px, 62vw); }        /* много цветов — пусть переносятся в два ряда */
   #tools { position:fixed; left:0; right:0; bottom:0; z-index:12; display:none;
     padding:8px 10px calc(8px + env(safe-area-inset-bottom)); gap:8px;
     background:#ffffffd9; border-top:3px solid #ffffff; box-shadow:0 -6px 20px #0002;
     align-items:center; justify-content:center; flex-wrap:wrap; }
   body.tools #tools { display:flex; }
-  .dot { width:38px; height:38px; border-radius:50%; border:3px solid #fff; cursor:pointer;
-    box-shadow:0 2px 6px #0003; }
+  .dot { width:32px; height:32px; border-radius:50%; border:2px solid #fff; cursor:pointer;
+    box-shadow:0 0 0 1px #94a3b8, 0 2px 6px #0003; }   /* обводка: белый кружок тоже видно */
   .dot.on { outline:3px solid #20283a; outline-offset:2px; }
   .dot.rainbow { background:conic-gradient(#ff4d4d,#ffd24d,#5fd06a,#4bb3f5,#a97bff,#ff4d4d); }
   .size { width:40px; height:40px; border-radius:12px; background:#fff; border:2px solid #cbd5e1;
@@ -114,7 +115,7 @@
   <link rel="apple-touch-icon-precomposed" sizes="180x180" href="apple-touch-icon.png">
   <meta name="msapplication-TileImage" content="icon-192.png">
   <meta name="msapplication-TileColor" content="#ffb84d">
-  <script>window.__APP_VER = "8894aa4119";</script>
+  <script>window.__APP_VER = "7eefd96908";</script>
 </head>
 <body>
 <div id="err"></div>
@@ -231,16 +232,26 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rnd = (a, b) => a + Math.random() * (b - a);
 
 const ЦВЕТА = [
-  { id:'red',    hex:'#ef4444', имя:'Красный' },
-  { id:'orange', hex:'#f97316', имя:'Оранжевый' },
-  { id:'yellow', hex:'#eab308', имя:'Жёлтый' },
-  { id:'green',  hex:'#22c55e', имя:'Зелёный' },
-  { id:'blue',   hex:'#3b82f6', имя:'Синий' },
-  { id:'cyan',   hex:'#06b6d4', имя:'Голубой' },
-  { id:'purple', hex:'#a855f7', имя:'Фиолетовый' },
-  { id:'pink',   hex:'#ec4899', имя:'Розовый' },
-  { id:'brown',  hex:'#92400e', имя:'Коричневый' },
-  { id:'black',  hex:'#1f2937', имя:'Чёрный' },
+  { id:'black',   hex:'#1f2937', имя:'Чёрный' },
+  { id:'gray',    hex:'#6b7280', имя:'Серый' },
+  { id:'silver',  hex:'#cbd5e1', имя:'Светло-серый' },
+  { id:'white',   hex:'#ffffff', имя:'Белый' },
+  { id:'brown',   hex:'#92400e', имя:'Коричневый' },
+  { id:'beige',   hex:'#e7c9a9', имя:'Бежевый' },
+  { id:'red',     hex:'#ef4444', имя:'Красный' },
+  { id:'crimson', hex:'#9f1239', имя:'Бордовый' },
+  { id:'orange',  hex:'#f97316', имя:'Оранжевый' },
+  { id:'yellow',  hex:'#eab308', имя:'Жёлтый' },
+  { id:'lime',    hex:'#84cc16', имя:'Салатовый' },
+  { id:'green',   hex:'#22c55e', имя:'Зелёный' },
+  { id:'forest',  hex:'#166534', имя:'Тёмно-зелёный' },
+  { id:'mint',    hex:'#5eead4', имя:'Мятный' },
+  { id:'cyan',    hex:'#06b6d4', имя:'Голубой' },
+  { id:'blue',    hex:'#3b82f6', имя:'Синий' },
+  { id:'navy',    hex:'#1e3a8a', имя:'Тёмно-синий' },
+  { id:'purple',  hex:'#a855f7', имя:'Фиолетовый' },
+  { id:'pink',    hex:'#ec4899', имя:'Розовый' },
+  { id:'peach',   hex:'#fda4af', имя:'Персиковый' },
   { id:'rainbow', hex:'rainbow', имя:'Радужный' },   // 🌈 линия переливается на ходу
 ];
 const ТОЛЩИНЫ = [5, 12, 26];
@@ -397,13 +408,13 @@ function drawStroke(g, s, k) {
 }
 function redraw() {
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#fbfcfe';                    // чуть не белый, чтобы белая кисть была видна
   ctx.fillRect(0, 0, W, H);
   for (const s of strokes) drawStroke(ctx, s);
 }
 
 /* ── ввод: у каждого пальца свой штрих ─────────────────────────────── */
-let рисованиеВкл = false, текущийЦвет = ЦВЕТА[9].hex, текущаяТолщина = ТОЛЩИНЫ[1], ластикВкл = false;
+let рисованиеВкл = false, текущийЦвет = '#1f2937', текущаяТолщина = ТОЛЩИНЫ[1], ластикВкл = false;
 let режимИгроков = false;      // в мини-играх палец привязывается к игроку по углу
 
 function игрокПоТочке(x, y) {
@@ -562,8 +573,8 @@ function setupPlayers(n) {
   const занято = [];
   игроки = [];
   for (let i = 0; i < сколькоИгроков; i++) {
-    let c = (игроки[i] && игроки[i].цвет) || ЦВЕТА[[0,4,3,6][i]].hex;
-    while (занято.includes(c)) c = ЦВЕТА[Math.floor(Math.random()*10)].hex;
+    let c = (игроки[i] && игроки[i].цвет) || ['#ef4444','#3b82f6','#22c55e','#a855f7'][i];
+    while (занято.includes(c)) c = ЦВЕТА[Math.floor(Math.random()*(ЦВЕТА.length-1))].hex;
     занято.push(c);
     игроки.push({ имя:ИМЕНА[i], цвет:c, бот:false, угол:УГЛЫ[i], очки:0 });
   }
