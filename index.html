@@ -114,7 +114,7 @@
   <link rel="apple-touch-icon-precomposed" sizes="180x180" href="apple-touch-icon.png">
   <meta name="msapplication-TileImage" content="icon-192.png">
   <meta name="msapplication-TileColor" content="#ffb84d">
-  <script>window.__APP_VER = "6ec4b7f4be";</script>
+  <script>window.__APP_VER = "8894aa4119";</script>
 </head>
 <body>
 <div id="err"></div>
@@ -128,6 +128,7 @@
   <div class="card" id="topLeft">🎨</div>
   <div class="card" id="topMid" style="pointer-events:none"></div>
   <div id="topRight">
+    <button class="card" id="muzBtn">🎵</button>
     <button class="card" id="fsBtn">⛶</button>
     <button class="card" id="backBtn">✖</button>
   </div>
@@ -244,6 +245,111 @@ const ЦВЕТА = [
 ];
 const ТОЛЩИНЫ = [5, 12, 26];
 const ОЧКИ = [5, 3, 2, 1];
+
+/* ══ 🎵 МУЗЫКА (своя, не из прошлых игр) ═══════════════════════════════
+   Две темы. АЛЬБОМ — медленная и мягкая: подушка из двух расстроенных синусов,
+   редкие колокольчики по пентатонике, эхо. ВЕЧЕРИНКА — прыгучая: марим­ба-мелодия,
+   упругий бас и шейкер. Всё синтезом, файлов нет. */
+const Muz = {
+  ctx:null, master:null, эхо:null, шаг:0, таймер:null, тема:null, выкл:false,
+  вкл() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.0001;
+    this.master.connect(this.ctx.destination);
+    // мягкое эхо: задержка с обратной связью — от него звук «дышит»
+    const d = this.ctx.createDelay(1.2); d.delayTime.value = 0.34;
+    const fb = this.ctx.createGain(); fb.gain.value = 0.32;
+    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+    d.connect(fb); fb.connect(lp); lp.connect(d);
+    const wet = this.ctx.createGain(); wet.gain.value = 0.35;
+    d.connect(wet); wet.connect(this.master);
+    this.эхо = d;
+  },
+  громкость(v) {
+    if (!this.ctx) return;
+    this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.master.gain.setTargetAtTime(Math.max(0.0001, v), this.ctx.currentTime, 0.25);
+  },
+  голос({ freq, dur, тип = 'sine', vol = 0.2, атака = 0.01, эхо = 0.5, детюн = 0 }) {
+    if (!this.ctx || this.выкл) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = тип; o.frequency.value = freq; o.detune.value = детюн;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + атака);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.master);
+    if (this.эхо && эхо > 0) { const e = this.ctx.createGain(); e.gain.value = эхо; g.connect(e); e.connect(this.эхо); }
+    o.start(t); o.stop(t + dur + 0.05);
+  },
+  щипок(freq, vol = 0.22) {                       // марим­ба: тон + октава сверху, быстрый спад
+    this.голос({ freq, dur:0.7, тип:'triangle', vol, атака:0.006, эхо:0.35 });
+    this.голос({ freq: freq*2, dur:0.28, тип:'sine', vol: vol*0.4, атака:0.004, эхо:0.2 });
+  },
+  подушка(freq, dur = 4.5, vol = 0.07) {          // мягкий фон из двух расстроенных синусов
+    this.голос({ freq, dur, тип:'sine', vol, атака:1.2, эхо:0.6, детюн:-6 });
+    this.голос({ freq, dur, тип:'sine', vol, атака:1.4, эхо:0.6, детюн:+7 });
+  },
+  колокол(freq, vol = 0.12) {
+    this.голос({ freq, dur:2.6, тип:'sine', vol, атака:0.01, эхо:0.8 });
+    this.голос({ freq: freq*2.76, dur:1.4, тип:'sine', vol: vol*0.25, атака:0.01, эхо:0.6 });
+  },
+  шум(dur, vol, частота, q = 1) {
+    if (!this.ctx || this.выкл) return;
+    const n = Math.floor(this.ctx.sampleRate*dur);
+    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+    const d2 = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d2[i] = (Math.random()*2-1) * (1 - i/n);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = частота; f.Q.value = q;
+    const g = this.ctx.createGain(); g.gain.value = vol;
+    src.connect(f); f.connect(g); g.connect(this.master); src.start();
+  },
+  играть(тема) {
+    this.вкл();
+    if (this.тема === тема) return;
+    this.тема = тема; this.шаг = 0;
+    clearInterval(this.таймер); this.таймер = null;
+    if (!тема) { this.громкость(0.0001); return; }
+    this.громкость(this.выкл ? 0.0001 : (тема === 'relax' ? 0.5 : 0.42));
+    const темп = тема === 'relax' ? 500 : 260;
+    this.таймер = setInterval(() => this.тик(), темп);
+  },
+  тик() {
+    if (this.выкл) return;
+    const s = this.шаг++;
+    if (this.тема === 'relax') {
+      // 🌊 пентатоника до-мажор, ничего резкого: подушка, редкая мелодия, дальние колокольчики
+      const пент = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3];
+      if (s % 16 === 0) { this.подушка(130.8, 7, 0.075); this.подушка(196.0, 7, 0.055); }
+      if (s % 16 === 8) { this.подушка(146.8, 7, 0.07); this.подушка(220.0, 7, 0.05); }
+      if (s % 4 === 0 || Math.random() < 0.35)
+        this.голос({ freq: пент[Math.floor(Math.random()*пент.length)], dur:1.8,
+                     тип:'sine', vol:0.10, атака:0.08, эхо:0.75 });
+      if (s % 12 === 5) this.колокол(пент[4 + Math.floor(Math.random()*4)], 0.10);
+    } else if (this.тема === 'party') {
+      // 🎉 бодрая марим­ба в ре-мажоре: упругий бас, мелодия и шейкер
+      const бас = [73.4, 73.4, 98.0, 110.0];                     // D, D, G, A
+      const мел = [293.7, 329.6, 370.0, 440.0, 493.9, 587.3];
+      if (s % 4 === 0) this.голос({ freq: бас[(s/4|0) % 4], dur:0.5, тип:'square', vol:0.13,
+                                    атака:0.005, эхо:0.1 });
+      if (s % 2 === 0) this.шум(0.06, 0.05, 6500, 3);            // шейкер
+      if (s % 8 === 4) this.шум(0.12, 0.12, 190, 0.7);           // хлопок
+      if (s % 2 === 1 && Math.random() < 0.85)
+        this.щипок(мел[Math.floor(Math.random()*мел.length)] * (Math.random() < 0.25 ? 2 : 1), 0.18);
+      if (s % 16 === 15) this.щипок(880, 0.2);
+    }
+  },
+  тумблер() {
+    this.выкл = !this.выкл;
+    try { localStorage.setItem('risovalka_muz', this.выкл ? '0' : '1'); } catch (_) {}
+    this.громкость(this.выкл ? 0.0001 : (this.тема === 'relax' ? 0.5 : 0.42));
+    return !this.выкл;
+  },
+};
+try { Muz.выкл = localStorage.getItem('risovalka_muz') === '0'; } catch (_) {}
 
 /* ── холст ─────────────────────────────────────────────────────────── */
 const cv = $('cv'), ctx = cv.getContext('2d');
@@ -383,6 +489,7 @@ function buildPalette() {
   });
 }
 function openAlbum() {
+  Muz.играть('relax');                              // 🌊 в альбоме — спокойная
   showScreen(null);
   document.body.classList.add('tools');
   strokes = []; активные.clear();
@@ -657,6 +764,7 @@ let очередьИгр = [], играИдёт = null, таймер = 0, тай
 let раундID = 0, данныеЗон = [], результаты = [];
 
 function startParty() {
+  Muz.играть('party');                              // 🎉 в мини-играх — бодрая
   очередьИгр = ИГРЫ.slice();
   игроки.forEach(p => p.очки = 0);
   nextGame();
@@ -913,9 +1021,13 @@ $('setupBack').onclick = () => showScreen('menu');
 $('archiveBack').onclick = () => showScreen('menu');
 $('startParty').onclick = () => startParty();
 $('champAgain').onclick = () => startParty();
-$('champMenu').onclick = () => showScreen('menu');
+$('champMenu').onclick = () => { Muz.играть(null); showScreen('menu'); };
 $('fsBtn').onclick = () => goFullscreen();
-$('backBtn').onclick = () => { stopTimer(); рисованиеВкл = false; режимИгроков = false; showScreen('menu'); };
+$('muzBtn').onclick = () => { const вкл = Muz.тумблер();
+  $('muzBtn').textContent = вкл ? '🎵' : '🔇';
+  bigMsg(вкл ? '🎵 музыка включена' : '🔇 музыка выключена', 1.2); };
+$('backBtn').onclick = () => { stopTimer(); рисованиеВкл = false; режимИгроков = false;
+  Muz.играть(null); showScreen('menu'); };
 
 loadArchive();
 setupPlayers(1);
@@ -931,6 +1043,8 @@ window.__dbg = {
   get game(){ return играИдёт ? играИдёт.id : null; },
   get results(){ return результаты.map(r => ({ игрок:r.игрок, очки:r.очки, место:r.место })); },
   get drawing(){ return рисованиеВкл; },
+  get muz(){ return { тема:Muz.тема, выключена:Muz.выкл, идёт:!!Muz.таймер }; },
+  muzToggle(){ return Muz.тумблер(); },
   album(){ openAlbum(); },
   color(hex){ текущийЦвет = hex; buildPalette(); return текущийЦвет; },
   line(pts, id){ const i = id || 1;
