@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>🎨 Рисовалка-вечеринка</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; overflow:hidden; user-select:none; touch-action:none;
+    font-family:'Trebuchet MS','Segoe UI',system-ui,sans-serif; color:#20283a;
+    background:linear-gradient(160deg,#ffe9a8,#ffc9de 45%,#b8e8ff); }
+  #err { position:fixed; inset:0 0 auto 0; z-index:99; background:#b91c1c; color:#fff; padding:12px;
+    font-size:13px; white-space:pre-wrap; display:none; }
+
+  /* ── экраны ── */
+  .screen { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:14px; padding:18px; text-align:center; overflow-y:auto; }
+  .hidden { display:none !important; }
+  h1 { margin:0; font-size:clamp(26px,7vw,58px); font-weight:900; letter-spacing:2px; color:#2b3350;
+    text-shadow:0 4px 0 #fff, 0 8px 22px #0002; }
+  .sub { font-size:clamp(13px,2.6vw,17px); max-width:640px; line-height:1.6; color:#3a4460; }
+  .btn { cursor:pointer; border:none; border-radius:22px; padding:15px 32px; font-weight:900;
+    font-size:clamp(16px,3vw,22px); letter-spacing:1px; color:#20283a;
+    background:linear-gradient(180deg,#fff2a8,#ffb84d); box-shadow:0 6px 0 #d98a1f, 0 12px 22px #0002;
+    transition:transform .07s; }
+  .btn:active { transform:translateY(3px); box-shadow:0 3px 0 #d98a1f; }
+  .btn.blue { background:linear-gradient(180deg,#bfe9ff,#4bb3f5); box-shadow:0 6px 0 #1f7fc0, 0 12px 22px #0002; }
+  .btn.pink { background:linear-gradient(180deg,#ffd4ea,#ff7ab8); box-shadow:0 6px 0 #c94c8b, 0 12px 22px #0002; }
+  .btn.green{ background:linear-gradient(180deg,#ccf5c6,#5fd06a); box-shadow:0 6px 0 #2f9440, 0 12px 22px #0002; }
+  .btn.small { padding:10px 20px; font-size:15px; border-radius:16px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center; }
+
+  /* ── холст ── */
+  #wrap { position:fixed; inset:0; z-index:5; display:none; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  /* ⚠️ Холст-подсказка лежит ПОВЕРХ холста для рисования и съедал все нажатия:
+     мышкой ничего не рисовалось (поймал Марк 23.08). Он только картинка — кликов не ловит. */
+  #ref { pointer-events:none; }
+  body.draw #wrap { display:block; }
+
+  /* ── панель инструментов ── */
+  #tools { position:fixed; left:0; right:0; bottom:0; z-index:12; display:none;
+    padding:8px 10px calc(8px + env(safe-area-inset-bottom)); gap:8px;
+    background:#ffffffd9; border-top:3px solid #ffffff; box-shadow:0 -6px 20px #0002;
+    align-items:center; justify-content:center; flex-wrap:wrap; }
+  body.tools #tools { display:flex; }
+  .dot { width:38px; height:38px; border-radius:50%; border:3px solid #fff; cursor:pointer;
+    box-shadow:0 2px 6px #0003; }
+  .dot.on { outline:3px solid #20283a; outline-offset:2px; }
+  .dot.rainbow { background:conic-gradient(#ff4d4d,#ffd24d,#5fd06a,#4bb3f5,#a97bff,#ff4d4d); }
+  .size { width:40px; height:40px; border-radius:12px; background:#fff; border:2px solid #cbd5e1;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .size.on { border-color:#20283a; background:#e8f2ff; }
+  .size i { display:block; background:#20283a; border-radius:50%; }
+  .tbtn { border:none; border-radius:14px; padding:9px 14px; font-weight:900; font-size:14px;
+    background:#eef2f9; cursor:pointer; box-shadow:0 3px 0 #cbd5e1; }
+  .tbtn:active { transform:translateY(2px); box-shadow:none; }
+  .tbtn.go { background:linear-gradient(180deg,#ccf5c6,#5fd06a); box-shadow:0 3px 0 #2f9440; }
+
+  /* ── верхняя плашка ── */
+  #top { position:fixed; left:0; right:0; top:0; z-index:12; display:none; justify-content:space-between;
+    align-items:flex-start; padding:calc(8px + env(safe-area-inset-top)) 10px 8px; pointer-events:none; }
+  body.tools #top, body.play #top { display:flex; }
+  .card { background:#ffffffdd; border-radius:14px; padding:7px 13px; font-weight:900; font-size:15px;
+    box-shadow:0 3px 10px #0002; }
+  .card.small { font-size:12.5px; padding:5px 10px; }
+  #topRight { display:flex; gap:8px; pointer-events:auto; }
+
+  /* ── подсказка и таймер ── */
+  #bigMsg { position:fixed; left:50%; top:26%; transform:translate(-50%,-50%); z-index:15; font-weight:900;
+    font-size:clamp(20px,5.5vw,46px); text-align:center; color:#2b3350; pointer-events:none;
+    text-shadow:0 4px 0 #fff, 0 10px 26px #0003; opacity:0; transition:opacity .25s; white-space:pre-line; }
+  #timerBar { position:fixed; left:0; right:0; top:0; height:7px; background:#ffffff66; z-index:14; display:none; }
+  /* ✅ кнопка «я нарисовал»: не хочешь ждать таймер — жми (просьба Марка) */
+  #doneBtn { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:16; display:none;
+    border:none; border-radius:20px; padding:13px 26px; font-weight:900; font-size:17px; cursor:pointer;
+    background:linear-gradient(180deg,#ccf5c6,#5fd06a); box-shadow:0 5px 0 #2f9440, 0 10px 20px #0003; }
+  #doneBtn:active { transform:translateX(-50%) translateY(3px); box-shadow:0 2px 0 #2f9440; }
+  #timerFill { height:100%; width:100%; background:linear-gradient(90deg,#5fd06a,#ffd24d,#ff7ab8); }
+
+  /* ── сетки ── */
+  .grid { display:grid; gap:10px; width:min(940px,94vw); }
+  .g4 { grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); }
+  .tile { background:#ffffffdd; border-radius:18px; padding:12px; text-align:left; cursor:pointer;
+    box-shadow:0 4px 14px #0002; border:3px solid transparent; transition:transform .07s; }
+  .tile:hover { transform:translateY(-2px); }
+  .tile.on { border-color:#4bb3f5; }
+  .tile h3 { margin:0 0 5px; font-size:16px; }
+  .tile p { margin:0; font-size:12.5px; color:#4a5570; line-height:1.45; }
+  .thumb { width:100%; height:110px; border-radius:12px; background:#fff; display:block; }
+
+  /* игроки */
+  .pcard { background:#ffffffdd; border-radius:18px; padding:12px; box-shadow:0 4px 14px #0002;
+    display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .pcard .name { font-weight:900; }
+  .pcard .swatches { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .sw { width:26px; height:26px; border-radius:50%; border:3px solid #fff; cursor:pointer;
+    box-shadow:0 2px 5px #0003; }
+  .sw.on { outline:3px solid #20283a; outline-offset:2px; }
+  table { border-collapse:collapse; background:#ffffffdd; border-radius:16px; overflow:hidden; }
+  td, th { padding:8px 16px; font-size:15px; }
+  tr:nth-child(even) td { background:#ffffff88; }
+</style>
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+  <link rel="shortcut icon" type="image/png" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Рисовалка-вечеринка">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="apple-touch-icon.png">
+  <meta name="msapplication-TileImage" content="icon-192.png">
+  <meta name="msapplication-TileColor" content="#ffb84d">
+  <script>window.__APP_VER = "6ec4b7f4be";</script>
+</head>
+<body>
+<div id="err"></div>
+
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <canvas id="ref"></canvas>
+</div>
+
+<div id="top">
+  <div class="card" id="topLeft">🎨</div>
+  <div class="card" id="topMid" style="pointer-events:none"></div>
+  <div id="topRight">
+    <button class="card" id="fsBtn">⛶</button>
+    <button class="card" id="backBtn">✖</button>
+  </div>
+</div>
+<div id="timerBar"><div id="timerFill"></div></div>
+<div id="bigMsg"></div>
+<button id="doneBtn">✅ Я НАРИСОВАЛ</button>
+
+<div id="tools">
+  <div class="row" id="palette"></div>
+  <div class="row" id="sizes"></div>
+  <button class="tbtn" id="undoBtn">↩︎ отмена</button>
+  <button class="tbtn" id="eraseBtn">🧽 ластик</button>
+  <button class="tbtn" id="clearBtn">🗑 чисто</button>
+  <button class="tbtn go" id="saveBtn">📥 В АРХИВ</button>
+</div>
+
+<!-- МЕНЮ -->
+<div class="screen" id="menu">
+  <h1>🎨 РИСОВАЛКА<br>ВЕЧЕРИНКА</h1>
+  <div class="sub">Рисуй в своём альбоме — или зови друзей и соревнуйтесь, кто рисует лучше.
+    На телефоне играют <b>вчетвером сразу</b>, каждый своим цветом.</div>
+  <div class="row">
+    <button class="btn pink" id="albumBtn">🖼 АЛЬБОМ</button>
+    <button class="btn blue" id="partyBtn">🎉 ВЕЧЕРИНКА</button>
+  </div>
+  <div class="row">
+    <button class="btn small green" id="archiveBtn">📚 АРХИВ</button>
+    <button class="btn small" id="helpBtn">❓ КАК ИГРАТЬ</button>
+  </div>
+  <div class="sub" style="opacity:.6;font-size:12px">Игра Марка · часть десятая</div>
+</div>
+
+<!-- КАК ИГРАТЬ -->
+<div class="screen hidden" id="help">
+  <h1 style="font-size:clamp(20px,4.6vw,34px)">❓ КАК ИГРАТЬ</h1>
+  <div class="sub" style="text-align:left">
+    <b>🖼 Альбом.</b> Рисуй пальцем или мышкой. Внизу кружки — тыкни, чтобы сменить цвет.
+    Есть 🌈 радужный: линия переливается сама. Кнопка <b>«📥 В АРХИВ»</b> сохраняет рисунок.<br><br>
+    <b>🎉 Вечеринка.</b> Выбираешь, сколько игроков и каким цветом каждый рисует, потом идут мини-игры.
+    За места дают очки: <b>5 · 3 · 2 · 1</b>. Кто наберёт больше — чемпион.<br><br>
+    <b>На телефоне</b> вчетвером рисуют одновременно: палец считается «твоим» по углу,
+    откуда ты начал вести. <b>На компьютере</b> играешь один мышкой, соперники — боты.
+  </div>
+  <button class="btn" id="helpBack">НАЗАД</button>
+</div>
+
+<!-- ВЫБОР ИГРОКОВ -->
+<div class="screen hidden" id="setup">
+  <h1 style="font-size:clamp(22px,5vw,40px)">🎉 КТО ИГРАЕТ</h1>
+  <div class="row" id="countRow"></div>
+  <div class="grid g4" id="playersGrid"></div>
+  <div class="sub" id="setupHint"></div>
+  <div class="row">
+    <button class="btn green" id="startParty">НАЧАТЬ</button>
+    <button class="btn small" id="setupBack">НАЗАД</button>
+  </div>
+</div>
+
+<!-- АРХИВ -->
+<div class="screen hidden" id="archive">
+  <h1 style="font-size:clamp(22px,5vw,38px)">📚 АРХИВ</h1>
+  <div class="sub" id="archiveHint">Тут лежат твои рисунки</div>
+  <div class="grid g4" id="archiveGrid"></div>
+  <button class="btn" id="archiveBack">НАЗАД</button>
+</div>
+
+<!-- ИТОГИ РАУНДА -->
+<div class="screen hidden" id="round">
+  <h1 style="font-size:clamp(20px,4.6vw,34px)" id="roundTitle">ИТОГИ</h1>
+  <div class="grid g4" id="roundGrid"></div>
+  <table id="roundTable"></table>
+  <button class="btn green" id="roundNext">ДАЛЬШЕ</button>
+</div>
+
+<!-- ЧЕМПИОН -->
+<div class="screen hidden" id="champ">
+  <h1 id="champTitle">🏆 ЧЕМПИОН</h1>
+  <div class="sub" id="champWho"></div>
+  <table id="champTable"></table>
+  <div class="row">
+    <button class="btn green" id="champAgain">ЕЩЁ РАЗ</button>
+    <button class="btn small" id="champMenu">В МЕНЮ</button>
+  </div>
+</div>
+
+<script>
+window.onerror = (m, s, l) => { const e = document.getElementById('err');
+  e.style.display = 'block'; e.textContent += '⚠ ' + m + ' (строка ' + l + ')\n'; };
+</script>
+<script>
+'use strict';
+/* ══════════════════════════════════════════════════════════════════════
+   🎨 РИСОВАЛКА-ВЕЧЕРИНКА — десятая игра Марка.
+   Обычный canvas 2D, без библиотек: грузится мгновенно и работает офлайн.
+   Замысел и мини-игры — Марка. Правила смотри в ПЛАН-ИГРЫ.md рядом.
+   ══════════════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rnd = (a, b) => a + Math.random() * (b - a);
+
+const ЦВЕТА = [
+  { id:'red',    hex:'#ef4444', имя:'Красный' },
+  { id:'orange', hex:'#f97316', имя:'Оранжевый' },
+  { id:'yellow', hex:'#eab308', имя:'Жёлтый' },
+  { id:'green',  hex:'#22c55e', имя:'Зелёный' },
+  { id:'blue',   hex:'#3b82f6', имя:'Синий' },
+  { id:'cyan',   hex:'#06b6d4', имя:'Голубой' },
+  { id:'purple', hex:'#a855f7', имя:'Фиолетовый' },
+  { id:'pink',   hex:'#ec4899', имя:'Розовый' },
+  { id:'brown',  hex:'#92400e', имя:'Коричневый' },
+  { id:'black',  hex:'#1f2937', имя:'Чёрный' },
+  { id:'rainbow', hex:'rainbow', имя:'Радужный' },   // 🌈 линия переливается на ходу
+];
+const ТОЛЩИНЫ = [5, 12, 26];
+const ОЧКИ = [5, 3, 2, 1];
+
+/* ── холст ─────────────────────────────────────────────────────────── */
+const cv = $('cv'), ctx = cv.getContext('2d');
+const refCv = $('ref'), refCtx = refCv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  for (const c of [cv, refCv]) { c.width = W*DPR; c.height = H*DPR; }
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  refCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  redraw();
+}
+addEventListener('resize', resize);
+
+/* ── штрихи: рисунок хранится точками, а не картинкой ──────────────── */
+let strokes = [];              // { цвет, толщина, ластик, игрок, точки:[{x,y}] }
+const активные = new Map();    // pointerId → штрих
+function newStroke(цвет, толщина, игрок, ластик) {
+  return { цвет, толщина, игрок, ластик:!!ластик, точки:[], h0: Math.random()*360 };
+}
+function drawStroke(g, s, k) {
+  if (s.точки.length < 1) return;
+  k = k || 1;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  g.lineWidth = s.толщина * k;
+  g.globalCompositeOperation = s.ластик ? 'destination-out' : 'source-over';
+  if (s.цвет === 'rainbow') {
+    for (let i = 1; i < s.точки.length; i++) {           // 🌈 каждый отрезок своего оттенка
+      g.strokeStyle = 'hsl(' + ((s.h0 + i*7) % 360) + ' 90% 55%)';
+      g.beginPath();
+      g.moveTo(s.точки[i-1].x*k, s.точки[i-1].y*k);
+      g.lineTo(s.точки[i].x*k, s.точки[i].y*k);
+      g.stroke();
+    }
+  } else {
+    g.strokeStyle = s.цвет;
+    g.beginPath();
+    g.moveTo(s.точки[0].x*k, s.точки[0].y*k);
+    for (let i = 1; i < s.точки.length; i++) g.lineTo(s.точки[i].x*k, s.точки[i].y*k);
+    if (s.точки.length === 1) g.lineTo(s.точки[0].x*k + 0.1, s.точки[0].y*k);
+    g.stroke();
+  }
+  g.globalCompositeOperation = 'source-over';
+}
+function redraw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+  for (const s of strokes) drawStroke(ctx, s);
+}
+
+/* ── ввод: у каждого пальца свой штрих ─────────────────────────────── */
+let рисованиеВкл = false, текущийЦвет = ЦВЕТА[9].hex, текущаяТолщина = ТОЛЩИНЫ[1], ластикВкл = false;
+let режимИгроков = false;      // в мини-играх палец привязывается к игроку по углу
+
+function игрокПоТочке(x, y) {
+  if (!режимИгроков) return 0;
+  if (зоны.length) {                                   // 🖥 экран поделён — игрок по своей части
+    for (let i = 0; i < зоны.length; i++) {
+      const z = зоны[i];
+      if (x >= z.x && x <= z.x+z.w && y >= z.y && y <= z.y+z.h) return i;
+    }
+  }
+  let лучший = 0, лучшее = 1e9;
+  игроки.forEach((p, i) => {
+    const d = Math.hypot(x - p.угол.x*W, y - p.угол.y*H);
+    if (d < лучшее) { лучшее = d; лучший = i; }
+  });
+  return лучший;
+}
+cv.addEventListener('pointerdown', e => {
+  if (!рисованиеВкл) return;
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}   // синтетические указатели захватить нельзя
+  const i = игрокПоТочке(e.clientX, e.clientY);
+  const цвет = режимИгроков ? игроки[i].цвет : (ластикВкл ? '#fff' : текущийЦвет);
+  const s = newStroke(цвет, режимИгроков ? 22 : текущаяТолщина, i, !режимИгроков && ластикВкл);
+  s.точки.push({ x:e.clientX, y:e.clientY });
+  strokes.push(s); активные.set(e.pointerId, s);
+  drawStroke(ctx, s);
+});
+cv.addEventListener('pointermove', e => {
+  const s = активные.get(e.pointerId); if (!s) return;
+  const п = s.точки[s.точки.length-1];
+  if (Math.hypot(e.clientX-п.x, e.clientY-п.y) < 1.2) return;
+  s.точки.push({ x:e.clientX, y:e.clientY });
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = s.толщина;
+  ctx.globalCompositeOperation = s.ластик ? 'destination-out' : 'source-over';
+  ctx.strokeStyle = s.цвет === 'rainbow'
+    ? 'hsl(' + ((s.h0 + s.точки.length*7) % 360) + ' 90% 55%)' : s.цвет;
+  ctx.beginPath(); ctx.moveTo(п.x, п.y); ctx.lineTo(e.clientX, e.clientY); ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over';
+});
+const конец = e => { активные.delete(e.pointerId); };
+cv.addEventListener('pointerup', конец);
+cv.addEventListener('pointercancel', конец);
+cv.addEventListener('pointerleave', конец);
+
+/* ── экраны ────────────────────────────────────────────────────────── */
+const ЭКРАНЫ = ['menu','help','setup','archive','round','champ'];
+function showScreen(id) {
+  ЭКРАНЫ.forEach(x => $(x).classList.toggle('hidden', x !== id));
+  document.body.classList.toggle('draw', !id);
+  if (id) { document.body.classList.remove('tools'); document.body.classList.remove('play'); }
+}
+let msgT = null;
+function bigMsg(t, сек, цвет) {
+  const el = $('bigMsg'); el.textContent = t; el.style.color = цвет || '#2b3350'; el.style.opacity = 1;
+  clearTimeout(msgT); msgT = setTimeout(() => { el.style.opacity = 0; }, (сек || 1.6)*1000);
+}
+function goFullscreen() {
+  const el = document.documentElement;
+  if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+  if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+}
+
+/* ── 🖼 АЛЬБОМ ─────────────────────────────────────────────────────── */
+function buildPalette() {
+  const p = $('palette'); p.innerHTML = '';
+  ЦВЕТА.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (c.hex === 'rainbow' ? ' rainbow' : '') + (текущийЦвет === c.hex ? ' on' : '');
+    if (c.hex !== 'rainbow') d.style.background = c.hex;
+    d.title = c.имя;
+    d.onclick = () => { текущийЦвет = c.hex; ластикВкл = false; buildPalette(); };
+    p.appendChild(d);
+  });
+  const s = $('sizes'); s.innerHTML = '';
+  ТОЛЩИНЫ.forEach(t => {
+    const b = document.createElement('div');
+    b.className = 'size' + (текущаяТолщина === t ? ' on' : '');
+    const i = document.createElement('i');
+    i.style.width = i.style.height = Math.max(6, t*0.9) + 'px';
+    b.appendChild(i);
+    b.onclick = () => { текущаяТолщина = t; buildPalette(); };
+    s.appendChild(b);
+  });
+}
+function openAlbum() {
+  showScreen(null);
+  document.body.classList.add('tools');
+  strokes = []; активные.clear();
+  режимИгроков = false; рисованиеВкл = true; ластикВкл = false;
+  buildPalette(); resize();
+  $('topLeft').textContent = '🖼 АЛЬБОМ';
+  $('topMid').textContent = 'рисуй что хочешь';
+  bigMsg('РИСУЙ!', 1.2);
+}
+$('undoBtn').onclick = () => { strokes.pop(); redraw(); };
+$('eraseBtn').onclick = () => { ластикВкл = !ластикВкл;
+  $('eraseBtn').style.background = ластикВкл ? '#ffd4ea' : '#eef2f9'; };
+$('clearBtn').onclick = () => { strokes = []; redraw(); bigMsg('чистый лист', 1); };
+$('saveBtn').onclick = () => saveToArchive();
+
+/* ── 📚 АРХИВ ──────────────────────────────────────────────────────── */
+const KEY = 'risovalka_v1';
+let архив = [];
+function loadArchive() {
+  try { архив = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (_) { архив = []; }
+}
+function storeArchive() {
+  try { localStorage.setItem(KEY, JSON.stringify(архив.slice(-60))); } catch (_) {}
+}
+function saveToArchive() {
+  if (!strokes.length) { bigMsg('сначала нарисуй что-нибудь', 1.6, '#c2410c'); return; }
+  архив.push({ имя:'Рисунок ' + (архив.length + 1), w:W, h:H,
+               s: strokes.map(s => ({ c:s.цвет, t:s.толщина, e:s.ластик ? 1 : 0, h:s.h0|0,
+                                      p: s.точки.map(q => [Math.round(q.x), Math.round(q.y)]) })) });
+  storeArchive();
+  bigMsg('📥 РИСУНОК В АРХИВЕ!', 2, '#15803d');
+}
+function рисунокНаCanvas(зап, c) {
+  const g = c.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  const k = Math.min(c.width / (зап.w || 1), c.height / (зап.h || 1));
+  зап.s.forEach(s => drawStroke(g, { цвет:s.c, толщина:s.t, ластик:!!s.e, h0:s.h||0,
+                                     точки:s.p.map(q => ({ x:q[0], y:q[1] })) }, k));
+}
+function openArchive() {
+  showScreen('archive');
+  const g = $('archiveGrid'); g.innerHTML = '';
+  $('archiveHint').textContent = архив.length ? 'Твоих рисунков: ' + архив.length
+    : 'Пока пусто. Нарисуй что-нибудь в альбоме и нажми «📥 В АРХИВ».';
+  архив.slice().reverse().forEach((зап, ri) => {
+    const i = архив.length - 1 - ri;
+    const t = document.createElement('div'); t.className = 'tile';
+    const c = document.createElement('canvas'); c.className = 'thumb'; c.width = 300; c.height = 200;
+    рисунокНаCanvas(зап, c);
+    const h = document.createElement('h3'); h.textContent = зап.имя;
+    const row = document.createElement('div'); row.className = 'row'; row.style.marginTop = '6px';
+    const del = document.createElement('button'); del.className = 'tbtn'; del.textContent = '🗑 удалить';
+    del.onclick = ev => { ev.stopPropagation(); архив.splice(i, 1); storeArchive(); openArchive(); };
+    const ren = document.createElement('button'); ren.className = 'tbtn'; ren.textContent = '✏️ имя';
+    ren.onclick = ev => { ev.stopPropagation();
+      const n = prompt('Как назовём рисунок?', зап.имя); if (n) { зап.имя = n; storeArchive(); openArchive(); } };
+    row.appendChild(ren); row.appendChild(del);
+    t.appendChild(c); t.appendChild(h); t.appendChild(row);
+    g.appendChild(t);
+  });
+}
+
+/* ── 🎉 ВЕЧЕРИНКА: игроки ──────────────────────────────────────────── */
+const УГЛЫ = [{x:0.12,y:0.85},{x:0.88,y:0.85},{x:0.12,y:0.15},{x:0.88,y:0.15}];
+const ИМЕНА = ['Игрок 1','Игрок 2','Игрок 3','Игрок 4'];
+let игроки = [], сколькоИгроков = 1, ботов = true;
+function setupPlayers(n) {
+  сколькоИгроков = clamp(n, 1, 4);
+  const занято = [];
+  игроки = [];
+  for (let i = 0; i < сколькоИгроков; i++) {
+    let c = (игроки[i] && игроки[i].цвет) || ЦВЕТА[[0,4,3,6][i]].hex;
+    while (занято.includes(c)) c = ЦВЕТА[Math.floor(Math.random()*10)].hex;
+    занято.push(c);
+    игроки.push({ имя:ИМЕНА[i], цвет:c, бот:false, угол:УГЛЫ[i], очки:0 });
+  }
+  if (сколькоИгроков === 1) {                      // 💻 один игрок — добавляем ботов
+    const ботЦвета = ['#3b82f6', '#22c55e', '#a855f7'];
+    for (let i = 0; i < 3; i++)
+      игроки.push({ имя:'Бот ' + (i+1), цвет:ботЦвета[i], бот:true, угол:УГЛЫ[i+1], очки:0,
+                    умение: 0.45 + i*0.15 });
+  }
+}
+function renderSetup() {
+  const cr = $('countRow'); cr.innerHTML = '';
+  [1,2,3,4].forEach(n => {
+    const b = document.createElement('button');
+    b.className = 'btn small' + (сколькоИгроков === n ? ' green' : '');
+    b.textContent = n === 1 ? '1 игрок (с ботами)' : n + ' игрока';
+    b.onclick = () => { setupPlayers(n); renderSetup(); };
+    cr.appendChild(b);
+  });
+  const g = $('playersGrid'); g.innerHTML = '';
+  игроки.forEach((p, i) => {
+    const d = document.createElement('div'); d.className = 'pcard';
+    const nm = document.createElement('div'); nm.className = 'name';
+    nm.textContent = (p.бот ? '🤖 ' : '🧒 ') + p.имя;
+    const sw = document.createElement('div'); sw.className = 'swatches';
+    if (!p.бот) ЦВЕТА.filter(c => c.hex !== 'rainbow').forEach(c => {
+      const s = document.createElement('div');
+      s.className = 'sw' + (p.цвет === c.hex ? ' on' : '');
+      s.style.background = c.hex;
+      s.onclick = () => { if (игроки.some((q, j) => j !== i && q.цвет === c.hex)) return;
+                          p.цвет = c.hex; renderSetup(); };
+      sw.appendChild(s);
+    });
+    else { const s = document.createElement('div'); s.className = 'sw on';
+           s.style.background = p.цвет; sw.appendChild(s); }
+    d.appendChild(nm); d.appendChild(sw);
+    g.appendChild(d);
+  });
+  $('setupHint').textContent = сколькоИгроков === 1
+    ? 'Играешь один мышкой или пальцем, соперники — боты.'
+    : 'На телефоне рисуйте одновременно: твой палец — тот, что начал из твоего угла.';
+}
+
+/* ── ход вечеринки ─────────────────────────────────────────────────── */
+/* 🎮 МИНИ-ИГРЫ. Почти все «зонные»: экран делится на части по числу игроков,
+   у каждого своя картинка в своей части, рисуют одновременно (просьба Марка). */
+const ИГРЫ = [
+  { id:'kopiya',  имя:'🖼 КОПИЯ',      правило:'Запомни рисунок и повтори его точно',
+    зоны:true, показ:4.0, секунды:25 },
+  { id:'kontur',  имя:'✏️ ПО КОНТУРУ', правило:'Веди точно по линии, не съезжая',
+    зоны:true, секунды:20 },
+  { id:'krug',    имя:'🌀 КРУГ',       правило:'Нарисуй самый ровный круг от руки',
+    зоны:true, секунды:15 },
+  { id:'karakul', имя:'⚡ КАРАКУЛЬ',   правило:'Успей нарисовать то, что написано',
+    зоны:true, секунды:14 },
+  { id:'zerkalo', имя:'🪞 ЗЕРКАЛО',    правило:'Дорисуй вторую половину симметрично',
+    зоны:true, секунды:22 },
+  { id:'tochki',  имя:'🎯 ПО ТОЧКАМ',  правило:'Соедини точки по порядку номеров',
+    зоны:true, секунды:20 },
+  { id:'zalivka', имя:'🎨 ЗАЛИВКА',    правило:'Закрась своим цветом как можно больше',
+    зоны:false, секунды:20 },
+];
+const СЛОВА = [
+  { слово:'ДОМ',    фигура:[[0.25,0.7],[0.25,0.45],[0.5,0.28],[0.75,0.45],[0.75,0.7],[0.25,0.7]] },
+  { слово:'ЁЛКА',   фигура:[[0.5,0.22],[0.3,0.55],[0.7,0.55],[0.5,0.22],[0.5,0.75]] },
+  { слово:'РАКЕТА', фигура:[[0.5,0.2],[0.62,0.45],[0.62,0.7],[0.38,0.7],[0.38,0.45],[0.5,0.2]] },
+  { слово:'РЫБКА',  фигура:[[0.3,0.5],[0.5,0.35],[0.68,0.5],[0.5,0.65],[0.3,0.5],[0.2,0.38],[0.2,0.62],[0.3,0.5]] },
+  { слово:'ЗВЕЗДА', фигура:[[0.5,0.22],[0.58,0.45],[0.78,0.45],[0.62,0.58],[0.68,0.78],
+                            [0.5,0.65],[0.32,0.78],[0.38,0.58],[0.22,0.45],[0.42,0.45],[0.5,0.22]] },
+];
+/* каждая зонная игра умеет: подготовить данные, нарисовать подсказку и посчитать счёт */
+const ЗОННЫЕ = {
+  kopiya: {
+    данные(z) { const ф = СЛОВА[Math.floor(Math.random()*СЛОВА.length)];
+                return { линия: ф.фигура.map(([x,y]) => ({ x:z.x + x*z.w, y:z.y + y*z.h })) }; },
+    подсказка(g, z, d) { линияПодсказка(g, d.линия, '#1f2937', Math.max(6, z.h*0.02)); },
+    счёт(d, точки) { return похожесть(d.линия, точки); },
+  },
+  kontur: {
+    данные(z) { return { линия: контурВЗоне(z) }; },
+    подсказка(g, z, d) { дорожка(g, d.линия, Math.max(16, z.h*0.07)); },
+    счёт(d, точки) { return счётПоКонтуру(d.линия, точки); },
+  },
+  krug: {
+    данные(z) { return { cx:z.x + z.w/2, cy:z.y + z.h/2, r: Math.min(z.w, z.h)*0.3 }; },
+    подсказка(g, z, d) { g.strokeStyle = '#cbd5e1'; g.lineWidth = 3; g.setLineDash([8,8]);
+      g.beginPath(); g.arc(d.cx, d.cy, 6, 0, 6.28); g.stroke(); g.setLineDash([]);
+      g.fillStyle = '#94a3b8'; g.font = '900 14px sans-serif'; g.textAlign = 'center';
+      g.fillText('круг вокруг точки', d.cx, d.cy + z.h*0.42); },
+    счёт(d, точки) {
+      if (точки.length < 8) return 0;
+      let sx = 0, sy = 0; точки.forEach(p => { sx += p.x; sy += p.y; });
+      const cx = sx/точки.length, cy = sy/точки.length;
+      const r = точки.map(p => Math.hypot(p.x-cx, p.y-cy));
+      const ср = r.reduce((a,b) => a+b, 0)/r.length;
+      if (ср < 12) return 0;
+      const разброс = Math.sqrt(r.reduce((a,b) => a + (b-ср)*(b-ср), 0)/r.length) / ср;
+      const замкнут = 1 - clamp(Math.hypot(точки[0].x-точки[точки.length-1].x,
+                                           точки[0].y-точки[точки.length-1].y) / (ср*2), 0, 1);
+      return clamp((1 - разброс*2.2)*75 + замкнут*25, 0, 100);
+    },
+  },
+  karakul: {
+    данные(z) { const ф = СЛОВА[Math.floor(Math.random()*СЛОВА.length)];
+                return { слово: ф.слово, линия: ф.фигура.map(([x,y]) => ({ x:z.x + x*z.w, y:z.y + y*z.h })) }; },
+    подсказка(g, z, d) { g.fillStyle = '#1f2937'; g.font = '900 ' + Math.max(22, z.h*0.13) + 'px sans-serif';
+      g.textAlign = 'center'; g.fillText(d.слово, z.x + z.w/2, z.y + z.h*0.2); },
+    счёт(d, точки) { return похожесть(d.линия, точки); },
+    подсказкаВидна: true,                    // слово видно всё время
+  },
+  zerkalo: {
+    данные(z) {
+      const ось = z.x + z.w/2, лев = [];
+      const N = 7;
+      for (let i = 0; i <= N; i++)
+        лев.push({ x: ось - z.w*0.34*Math.sin(i/N*3.14), y: z.y + z.h*0.22 + z.h*0.56*i/N });
+      return { ось, лев, прав: лев.map(p => ({ x: ось*2 - p.x, y: p.y })) };
+    },
+    подсказка(g, z, d) {
+      линияПодсказка(g, d.лев, '#1f2937', Math.max(6, z.h*0.02));
+      g.strokeStyle = '#94a3b8'; g.lineWidth = 2; g.setLineDash([7,7]);
+      g.beginPath(); g.moveTo(d.ось, z.y+8); g.lineTo(d.ось, z.y+z.h-8); g.stroke(); g.setLineDash([]);
+    },
+    счёт(d, точки) { return похожесть(d.прав, точки.filter(p => p.x > d.ось - 6)); },
+    подсказкаВидна: true,
+  },
+  tochki: {
+    данные(z) {
+      const т = [], N = 7;
+      for (let i = 0; i < N; i++) {
+        const a = i/N*6.28 + rnd(-0.2, 0.2), r = Math.min(z.w, z.h)*rnd(0.2, 0.34);
+        т.push({ x: z.x + z.w/2 + Math.cos(a)*r*1.3, y: z.y + z.h/2 + Math.sin(a)*r });
+      }
+      return { точки:т, линия:т.concat([т[0]]) };
+    },
+    подсказка(g, z, d) {
+      d.точки.forEach((p, i) => {
+        g.fillStyle = '#fff'; g.strokeStyle = '#1f2937'; g.lineWidth = 3;
+        g.beginPath(); g.arc(p.x, p.y, 15, 0, 6.28); g.fill(); g.stroke();
+        g.fillStyle = '#1f2937'; g.font = '900 15px sans-serif'; g.textAlign = 'center';
+        g.textBaseline = 'middle'; g.fillText(String(i+1), p.x, p.y);
+      });
+      g.textBaseline = 'alphabetic';
+    },
+    счёт(d, точки) { return похожесть(d.линия, точки); },
+    подсказкаВидна: true,
+  },
+};
+function линияПодсказка(g, л, цвет, ширина) {
+  g.strokeStyle = цвет; g.lineWidth = ширина; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(л[0].x, л[0].y);
+  for (let i = 1; i < л.length; i++) g.lineTo(л[i].x, л[i].y);
+  g.stroke();
+}
+function дорожка(g, л, ширина) {
+  g.strokeStyle = '#cbd5e1'; g.lineWidth = ширина; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(л[0].x, л[0].y);
+  for (let i = 1; i < л.length; i++) g.lineTo(л[i].x, л[i].y);
+  g.stroke();
+  g.strokeStyle = '#94a3b8'; g.lineWidth = 3; g.setLineDash([9,9]); g.stroke(); g.setLineDash([]);
+}
+/* насколько нарисованное похоже на образец: обе линии в мелкую сетку и сравнение клеток */
+function похожесть(образец, точки) {
+  if (!точки || точки.length < 3) return 0;
+  const мин = { x:1e9, y:1e9 }, макс = { x:-1e9, y:-1e9 };
+  образец.concat(точки).forEach(p => {
+    мин.x = Math.min(мин.x, p.x); мин.y = Math.min(мин.y, p.y);
+    макс.x = Math.max(макс.x, p.x); макс.y = Math.max(макс.y, p.y);
+  });
+  const ш = Math.max(1, макс.x-мин.x), в = Math.max(1, макс.y-мин.y), N = 28;
+  const сетка = () => new Uint8Array(N*N);
+  const пометить = (g, x, y) => {
+    const i = clamp(Math.floor((x-мин.x)/ш*N), 0, N-1), j = clamp(Math.floor((y-мин.y)/в*N), 0, N-1);
+    g[j*N+i] = 1;
+  };
+  const залить = (список) => {
+    const g = сетка();
+    for (let k = 1; k < список.length; k++) {
+      const a = список[k-1], b = список[k];
+      const шагов = Math.max(1, Math.ceil(Math.hypot(b.x-a.x, b.y-a.y)/3));
+      for (let t = 0; t <= шагов; t++) пометить(g, a.x + (b.x-a.x)*t/шагов, a.y + (b.y-a.y)*t/шагов);
+    }
+    return g;
+  };
+  const A = залить(образец), B = залить(точки);
+  let общих = 0, всегоA = 0, лишних = 0;
+  for (let i = 0; i < N*N; i++) {
+    if (A[i]) { всегоA++; if (B[i]) общих++; }
+    else if (B[i]) лишних++;
+  }
+  const попал = всегоA ? общих/всегоA : 0;
+  const штраф = clamp(лишних/Math.max(1, всегоA)*0.45, 0, 0.55);
+  return clamp((попал - штраф)*100, 0, 100);
+}
+
+let очередьИгр = [], играИдёт = null, таймер = 0, таймерМакс = 0, тик = null;
+/* ⚠️ номер раунда: отложенные действия прошлой игры не должны срабатывать в следующей */
+let раундID = 0, данныеЗон = [], результаты = [];
+
+function startParty() {
+  очередьИгр = ИГРЫ.slice();
+  игроки.forEach(p => p.очки = 0);
+  nextGame();
+}
+function nextGame() {
+  раундID++; stopTimer(); $('doneBtn').style.display = 'none';
+  if (!очередьИгр.length) return showChampion();
+  играИдёт = очередьИгр.shift();
+  результаты = [];
+  if (играИдёт.зоны) startZoneGame(); else startFill();
+}
+function startTimer(сек, конец) {
+  const мой = раундID;
+  таймер = таймерМакс = сек;
+  $('timerBar').style.display = 'block';
+  clearInterval(тик);
+  тик = setInterval(() => {
+    if (мой !== раундID) { clearInterval(тик); return; }
+    таймер -= 0.1;
+    $('timerFill').style.width = clamp(таймер/таймерМакс, 0, 1)*100 + '%';
+    $('topMid').textContent = 'осталось ' + Math.max(0, таймер).toFixed(0) + ' с';
+    if (таймер <= 0) { clearInterval(тик); $('timerBar').style.display = 'none'; конец(); }
+  }, 100);
+}
+function stopTimer() { clearInterval(тик); $('timerBar').style.display = 'none'; }
+
+/* ── зонные игры: экран поделён, у каждого своя картинка ───────────── */
+let зоны = [];
+function поделитьЭкран(n) {
+  зоны = [];
+  const кол = n <= 2 ? n : 2, ряд = n <= 2 ? 1 : 2;
+  const w = W/кол, h = H/ряд;
+  for (let i = 0; i < n; i++) зоны.push({ x:(i % кол)*w, y:Math.floor(i/кол)*h, w, h });
+}
+function контурВЗоне(z) {
+  const т = [], N = 20, ф = rnd(0, 6.28);
+  for (let i = 0; i <= N; i++)
+    т.push({ x: z.x + z.w*0.12 + z.w*0.76*i/N,
+             y: z.y + z.h*0.5 + Math.sin(ф + i/N*5.5)*z.h*0.26*Math.sin(i/N*3.14) });
+  return т;
+}
+function рисуемЗоны(сПодсказкой) {
+  const G = ЗОННЫЕ[играИдёт.id];
+  refCtx.clearRect(0, 0, W, H);
+  зоны.forEach((z, i) => {
+    const p = игроки[i];
+    refCtx.fillStyle = p.цвет + '14'; refCtx.fillRect(z.x+3, z.y+3, z.w-6, z.h-6);
+    refCtx.strokeStyle = p.цвет; refCtx.lineWidth = 5;
+    refCtx.strokeRect(z.x+3, z.y+3, z.w-6, z.h-6);
+    if (сПодсказкой) G.подсказка(refCtx, z, данныеЗон[i]);
+    refCtx.fillStyle = p.цвет; refCtx.font = '900 15px sans-serif'; refCtx.textAlign = 'left';
+    refCtx.fillText((p.бот ? '🤖 ' : '🧒 ') + p.имя, z.x + 14, z.y + 26);
+  });
+}
+function startZoneGame() {
+  const мой = раундID;
+  showScreen(null); document.body.classList.add('play');
+  strokes = []; активные.clear(); режимИгроков = true; рисованиеВкл = false;
+  resize();
+  поделитьЭкран(игроки.length);
+  const G = ЗОННЫЕ[играИдёт.id];
+  данныеЗон = зоны.map(z => G.данные(z));
+  рисуемЗоны(true);
+  $('topLeft').textContent = играИдёт.имя;
+  $('topMid').textContent = играИдёт.правило;
+  const начать = () => {
+    if (мой !== раундID) return;
+    if (играИдёт.показ && !G.подсказкаВидна) рисуемЗоны(false);   // 🖼 эталон прячется
+    рисованиеВкл = true;
+    $('doneBtn').style.display = 'block';
+    bigMsg(играИдёт.показ ? 'ТЕПЕРЬ ПОВТОРИ!' : 'РИСУЙ!', 1.4, '#15803d');
+    игроки.forEach((p, i) => { if (p.бот) ботРисует(p, i); });
+    startTimer(играИдёт.секунды, финишЗон);
+  };
+  if (играИдёт.показ) { bigMsg('ЗАПОМНИ РИСУНОК!', 2.4); setTimeout(начать, играИдёт.показ*1000); }
+  else начать();
+}
+function ботЛиния(id, d, z) {
+  if (id === 'krug') {
+    const т = [];
+    for (let i = 0; i <= 24; i++)
+      т.push({ x: d.cx + Math.cos(i/24*6.28)*d.r, y: d.cy + Math.sin(i/24*6.28)*d.r });
+    return т;
+  }
+  if (id === 'zerkalo') return d.прав;
+  return d.линия || [];
+}
+function ботРисует(p, idx) {
+  const мой = раундID;
+  const л = ботЛиния(играИдёт.id, данныеЗон[idx], зоны[idx]);
+  if (!л.length) return;
+  const s = newStroke(p.цвет, 14, idx, false);
+  strokes.push(s);
+  let i = 0;
+  const шаг = () => {
+    if (мой !== раундID || таймер <= 0) return;
+    const т = л[Math.min(i, л.length-1)];
+    const промах = (1 - p.умение) * Math.min(зоны[idx].w, зоны[idx].h) * 0.09;
+    s.точки.push({ x: т.x + rnd(-промах, промах), y: т.y + rnd(-промах, промах) });
+    drawStroke(ctx, s);
+    if (++i <= л.length + 1) setTimeout(шаг, 170 - p.умение*70);
+  };
+  setTimeout(шаг, 350);
+}
+function финишЗон() {
+  const мой = раундID;
+  stopTimer(); рисованиеВкл = false; режимИгроков = false;
+  $('doneBtn').style.display = 'none';
+  const G = ЗОННЫЕ[играИдёт.id];
+  результаты = игроки.map((p, i) => {
+    const мои = [];
+    strokes.forEach(st => { if (st.игрок === i) st.точки.forEach(q => мои.push(q)); });
+    return { игрок:i, очки: Math.round(G.счёт(данныеЗон[i], мои)) };
+  });
+  setTimeout(() => { if (мой === раундID) showRound(); }, 600);
+}
+function счётПоКонтуру(к, мои) {
+  if (!к || !мои.length) return 0;
+  const порог = Math.max(22, H*0.045);
+  let вПолосе = 0; const покрыто = new Set();
+  мои.forEach(p => {
+    let лучш = 1e9, где = 0;
+    к.forEach((q, i) => { const d = Math.hypot(p.x-q.x, p.y-q.y); if (d < лучш) { лучш = d; где = i; } });
+    if (лучш < порог) { вПолосе++; покрыто.add(где); }
+  });
+  return clamp((покрыто.size/к.length)*70 + (вПолосе/мои.length)*30, 0, 100);
+}
+
+/* ── 🎨 ЗАЛИВКА: общий лист, все сразу ─────────────────────────────── */
+function startFill() {
+  showScreen(null); document.body.classList.add('play');
+  strokes = []; активные.clear(); зоны = [];
+  режимИгроков = true; рисованиеВкл = true;
+  resize(); refCtx.clearRect(0, 0, W, H);
+  рисуемУглы();
+  $('topLeft').textContent = играИдёт.имя;
+  $('topMid').textContent = играИдёт.правило;
+  $('doneBtn').style.display = 'block';
+  bigMsg('ЗАКРАШИВАЙ!', 1.6, '#15803d');
+  игроки.forEach((p, i) => { if (p.бот) ботЗакрашивает(p, i); });
+  startTimer(играИдёт.секунды, финишЗаливки);
+}
+function рисуемУглы() {
+  refCtx.clearRect(0, 0, W, H);
+  игроки.forEach(p => {
+    const x = p.угол.x*W, y = p.угол.y*H;
+    refCtx.fillStyle = p.цвет + '55';
+    refCtx.beginPath(); refCtx.arc(x, y, 46, 0, 6.28); refCtx.fill();
+    refCtx.strokeStyle = p.цвет; refCtx.lineWidth = 4; refCtx.stroke();
+    refCtx.fillStyle = '#20283a'; refCtx.font = '900 13px sans-serif'; refCtx.textAlign = 'center';
+    refCtx.fillText(p.имя, x, y + 66);
+  });
+}
+function ботЗакрашивает(p, idx) {
+  const мой = раундID;
+  let x = p.угол.x*W, y = p.угол.y*H, a = rnd(0, 6.28);
+  const s = newStroke(p.цвет, 22, idx, false);
+  strokes.push(s);
+  const шаг = () => {
+    if (мой !== раундID || таймер <= 0) return;
+    for (let k = 0; k < 3; k++) {
+      a += rnd(-0.5, 0.5);
+      x = clamp(x + Math.cos(a)*13*(0.6 + p.умение), 10, W-10);
+      y = clamp(y + Math.sin(a)*13*(0.6 + p.умение), 10, H-10);
+      s.точки.push({ x, y });
+    }
+    drawStroke(ctx, s);
+    setTimeout(шаг, 55);
+  };
+  setTimeout(шаг, 300);
+}
+function финишЗаливки() {
+  const мой = раундID;
+  рисованиеВкл = false; режимИгроков = false;
+  $('doneBtn').style.display = 'none';
+  const N = 96, клетки = new Int8Array(N*N).fill(-1);
+  strokes.forEach(s => {
+    for (let k = 0; k < s.точки.length; k++) {
+      const a = s.точки[k], b = s.точки[Math.max(0, k-1)];
+      const шагов = Math.max(1, Math.ceil(Math.hypot(b.x-a.x, b.y-a.y)/3));
+      const cw = W/N, ch = H/N, r = s.толщина/2;
+      const ri = Math.max(1, Math.ceil(r/cw)), rj = Math.max(1, Math.ceil(r/ch));
+      for (let t = 0; t <= шагов; t++) {
+        const x = b.x + (a.x-b.x)*t/шагов, y = b.y + (a.y-b.y)*t/шагов;
+        const ci = Math.floor(x/W*N), cj = Math.floor(y/H*N);
+        for (let di = -ri; di <= ri; di++) for (let dj = -rj; dj <= rj; dj++) {
+          if ((di*cw)*(di*cw) + (dj*ch)*(dj*ch) > r*r + cw*ch) continue;
+          клетки[clamp(cj+dj,0,N-1)*N + clamp(ci+di,0,N-1)] = s.игрок;
+        }
+      }
+    }
+  });
+  const счёт = игроки.map(() => 0);
+  for (let i = 0; i < N*N; i++) if (клетки[i] >= 0) счёт[клетки[i]]++;
+  результаты = игроки.map((p, i) => ({ игрок:i, очки: Math.round(счёт[i]/(N*N)*100) }));
+  setTimeout(() => { if (мой === раундID) showRound(); }, 600);
+}
+
+/* ── итоги раунда и чемпион ────────────────────────────────────────── */
+function showRound() {
+  stopTimer();
+  рисованиеВкл = false; режимИгроков = false;
+  const по = результаты.slice().sort((a, b) => b.очки - a.очки);
+  по.forEach((r, место) => { игроки[r.игрок].очки += ОЧКИ[Math.min(место, 3)]; r.место = место + 1; });
+  showScreen('round');
+  $('roundTitle').textContent = играИдёт.имя + ' — итоги';
+  const g = $('roundGrid'); g.innerHTML = '';
+  по.forEach(r => {
+    const p = игроки[r.игрок];
+    const t = document.createElement('div'); t.className = 'tile';
+    if (r.рисунок) {
+      const c = document.createElement('canvas'); c.className = 'thumb'; c.width = 300; c.height = 200;
+      рисунокНаCanvas({ w:r.w, h:r.h, s:r.рисунок.map(s => ({ c:s.цвет, t:s.толщина, e:0, h:s.h0|0,
+        p:s.точки.map(q => [q.x, q.y]) })) }, c);
+      t.appendChild(c);
+    } else {
+      const c = document.createElement('canvas'); c.className = 'thumb'; c.width = 300; c.height = 200;
+      const gg = c.getContext('2d'); gg.fillStyle = p.цвет; gg.fillRect(0, 0, 300*r.очки/100, 200);
+      gg.fillStyle = '#eef2f9'; gg.fillRect(300*r.очки/100, 0, 300, 200);
+      t.appendChild(c);
+    }
+    const h = document.createElement('h3');
+    h.textContent = ['🥇','🥈','🥉','4️⃣'][r.место-1] + ' ' + p.имя;
+    h.style.color = p.цвет;
+    const s = document.createElement('p'); s.textContent = 'результат: ' + r.очки + '%  ·  +' + ОЧКИ[Math.min(r.место-1,3)] + ' очков';
+    t.appendChild(h); t.appendChild(s);
+    g.appendChild(t);
+  });
+  const tb = $('roundTable');
+  tb.innerHTML = '<tr><th>Игрок</th><th>Очки всего</th></tr>' +
+    игроки.slice().sort((a,b) => b.очки - a.очки)
+      .map(p => '<tr><td style="color:' + p.цвет + ';font-weight:900">' + p.имя + '</td><td>' + p.очки + '</td></tr>').join('');
+}
+$('roundNext').onclick = () => nextGame();
+$('doneBtn').onclick = () => { if (!играИдёт) return;
+  if (играИдёт.зоны) финишЗон(); else финишЗаливки(); };
+
+function showChampion() {
+  showScreen('champ');
+  const по = игроки.slice().sort((a, b) => b.очки - a.очки);
+  $('champWho').innerHTML = '<b style="color:' + по[0].цвет + '">' + по[0].имя + '</b> — лучший художник вечеринки!';
+  $('champTable').innerHTML = '<tr><th>Место</th><th>Игрок</th><th>Очки</th></tr>' +
+    по.map((p, i) => '<tr><td>' + ['🥇','🥈','🥉','4️⃣'][Math.min(i,3)] + '</td><td style="color:' + p.цвет +
+      ';font-weight:900">' + p.имя + '</td><td>' + p.очки + '</td></tr>').join('');
+}
+
+/* ── кнопки ────────────────────────────────────────────────────────── */
+$('albumBtn').onclick = () => { goFullscreen(); openAlbum(); };
+$('partyBtn').onclick = () => { goFullscreen(); setupPlayers(сколькоИгроков); renderSetup(); showScreen('setup'); };
+$('archiveBtn').onclick = () => openArchive();
+$('helpBtn').onclick = () => showScreen('help');
+$('helpBack').onclick = () => showScreen('menu');
+$('setupBack').onclick = () => showScreen('menu');
+$('archiveBack').onclick = () => showScreen('menu');
+$('startParty').onclick = () => startParty();
+$('champAgain').onclick = () => startParty();
+$('champMenu').onclick = () => showScreen('menu');
+$('fsBtn').onclick = () => goFullscreen();
+$('backBtn').onclick = () => { stopTimer(); рисованиеВкл = false; режимИгроков = false; showScreen('menu'); };
+
+loadArchive();
+setupPlayers(1);
+resize();
+showScreen('menu');
+
+/* ── отладка для автотестов ────────────────────────────────────────── */
+window.__dbg = {
+  get screen(){ return ЭКРАНЫ.find(x => !$(x).classList.contains('hidden')) || 'canvas'; },
+  get strokes(){ return strokes.length; },
+  get archive(){ return архив.map(a => a.имя); },
+  get players(){ return игроки.map(p => ({ имя:p.имя, цвет:p.цвет, бот:p.бот, очки:p.очки })); },
+  get game(){ return играИдёт ? играИдёт.id : null; },
+  get results(){ return результаты.map(r => ({ игрок:r.игрок, очки:r.очки, место:r.место })); },
+  get drawing(){ return рисованиеВкл; },
+  album(){ openAlbum(); },
+  color(hex){ текущийЦвет = hex; buildPalette(); return текущийЦвет; },
+  line(pts, id){ const i = id || 1;
+    cv.dispatchEvent(new PointerEvent('pointerdown', { pointerId:i, clientX:pts[0][0], clientY:pts[0][1], bubbles:true }));
+    for (let k = 1; k < pts.length; k++)
+      cv.dispatchEvent(new PointerEvent('pointermove', { pointerId:i, clientX:pts[k][0], clientY:pts[k][1], bubbles:true }));
+    cv.dispatchEvent(new PointerEvent('pointerup', { pointerId:i, clientX:pts[pts.length-1][0], clientY:pts[pts.length-1][1], bubbles:true }));
+    return strokes.length; },
+  save(){ saveToArchive(); return архив.length; },
+  openArchive(){ openArchive(); return архив.length; },
+  setPlayers(n){ setupPlayers(n); renderSetup(); return игроки.length; },
+  party(){ startParty(); return играИдёт ? играИдёт.id : null; },
+  get zones(){ return зоны.length; },
+  traceZones(){ контуры.forEach((к, i) => this.line(к.map(p => [p.x, p.y]), 10 + i)); return зоны.length; },
+  get ref(){ return зоны.length; },
+  get games(){ return ИГРЫ.map(g => g.id); },
+  traceZones(){ данныеЗон.forEach((d, i) => {
+      const л = ботЛиния(играИдёт.id, d, зоны[i]);
+      if (л.length) this.line(л.map(p => [p.x, p.y]), 10 + i); });
+    return зоны.length; },
+  done(){ $('doneBtn').click(); return результаты.length; },
+  endTurn(){ if (!играИдёт) return null;
+    if (играИдёт.зоны) финишЗон(); else финишЗаливки();
+    return результаты.length; },
+  next(){ nextGame(); return играИдёт ? играИдёт.id : 'champ'; },
+  get champion(){ return $('champ').classList.contains('hidden') ? null
+    : игроки.slice().sort((a,b) => b.очки - a.очки)[0].имя; },
+};
+</script>
+
+<script>
+// Игра стартует МГНОВЕННО из памяти телефона и работает без интернета.
+// Если интернет есть — проверяем крошечный version.json и обновляемся сами.
+(function () {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(function(){}));
+  }
+  function баннер(текст) {
+    var d = document.getElementById('updBanner');
+    if (!d) { d = document.createElement('div'); d.id = 'updBanner';
+      d.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:99999;' +
+        'background:#0b1220ee;color:#7dd3fc;font:900 15px system-ui;padding:10px 18px;border-radius:14px;' +
+        'border:2px solid #7dd3fc55;box-shadow:0 8px 24px #0009';
+      document.body.appendChild(d); }
+    d.textContent = текст;
+    return d;
+  }
+  async function applyUpdate() {
+    баннер('🔄 Обновляю игру…');
+    try {
+      const ks = await caches.keys();
+      await Promise.all(ks.map(function (k) { return caches.delete(k); }));
+      if ('serviceWorker' in navigator) {
+        const rs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(rs.map(function (r) { return r.unregister(); }));
+      }
+    } catch (_) {}
+    // ⚠️ Простой location.reload() может взять СТАРЫЙ html из кэша браузера,
+    // и обновление «не приходит» (жалоба Марка 23.08). Перезагружаемся по новому адресу.
+    setTimeout(function () {
+      location.replace(location.pathname + '?v=' + Date.now());
+    }, 400);
+  }
+  window.__forceUpdate = applyUpdate;
+  async function checkVersion(показать) {
+    try {
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      const j = await r.json();
+      if (!j || !j.v) throw 0;
+      if (j.v === window.__APP_VER) { if (показать) { const d = баннер('✅ У тебя самая свежая версия');
+          setTimeout(function(){ d.remove(); }, 2500); } return false; }
+      if (window.__onUpdate) window.__onUpdate(applyUpdate); else applyUpdate();
+      return true;
+    } catch (_) {
+      if (показать) { const d = баннер('📴 Нет интернета — обновить не выйдет');
+        setTimeout(function(){ d.remove(); }, 2500); }
+      return false;
+    }
+  }
+  window.__checkUpdate = function () { return checkVersion(true); };
+  window.addEventListener('load', function () { setTimeout(checkVersion, 300); setTimeout(checkVersion, 3000); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) checkVersion(); });
+  addEventListener('online', checkVersion);
+  setInterval(checkVersion, 60 * 1000);
+})();
+</script>
+</body>
+</html>
